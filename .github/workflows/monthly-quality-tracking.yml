@@ -1,0 +1,58 @@
+name: Monthly Quality Tracking Automation
+
+on:
+  schedule:
+    # Run on the 1st day of every month at 00:00 UTC (09:00 JST)
+    - cron: '0 0 1 * *'
+  workflow_dispatch: # Allow manual triggering
+
+permissions:
+  contents: write
+
+jobs:
+  merge-master-to-quality-tracking:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Checkout or create codequality-tracking branch
+        run: |
+          # Check if branch exists
+          if git ls-remote --exit-code --heads origin codequality-tracking; then
+            git checkout codequality-tracking
+          else
+            git checkout -b codequality-tracking
+          fi
+          git fetch origin
+
+      - name: Merge master into codequality-tracking
+        run: |
+          git merge origin/master --no-edit || {
+            echo "Merge conflict detected. Manual intervention may be required."
+            exit 1
+          }
+
+      - name: Push changes to codequality-tracking branch
+        run: |
+          git push origin codequality-tracking || {
+            echo "Push failed. This may be due to no changes or branch protection."
+          }
+
+      - name: Create summary
+        if: always()
+        run: |
+          echo "## Quality Tracking Monthly Merge" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch**: codequality-tracking" >> $GITHUB_STEP_SUMMARY
+          echo "- **Triggered**: $(date)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
